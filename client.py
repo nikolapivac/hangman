@@ -1,18 +1,21 @@
-from subprocess import Popen, PIPE, STDOUT
+import socket
 
-hangman = Popen(["./server"], stdin=PIPE, stdout=PIPE, stderr=STDOUT)
+HOST = "localhost"
+PORT = 8000
 
 print("Welcome to HANGMAN!")
 
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client_socket.connect((HOST, PORT))
+
 while True:
-    board = hangman.stdout.readline().decode().strip()
+    board = client_socket.recv(1024).decode().strip()
     print(board)
     
     letter = input("Enter a letter: ")
-    hangman.stdin.write(letter.encode() + b"\n")
-    hangman.stdin.flush()
+    client_socket.send(letter.encode())
 
-    status = hangman.stdout.readline().decode().strip()
+    status = client_socket.recv(1024).decode().strip()
     print(status)
     if(status.startswith("You guessed")): 
         break
@@ -21,7 +24,4 @@ while True:
     else:
         continue
 
-
-hangman.stdin.close()
-hangman.stdout.close()
-hangman.kill()
+client_socket.close()
