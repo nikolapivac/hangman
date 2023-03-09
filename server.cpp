@@ -10,6 +10,30 @@
 
 using namespace std;
 
+// ----------------------------------------------------------------
+// Server otvara socket u main-u i bind-a ga na adresu i port. Zatim slusa
+// i ceka da se klijenti spoje. Za svakog klijenta otvara novi thread
+// i pokrece igru (hangmanGame funkcija). U toj funkciji se komunicira sa
+// klijentom preko send/recv metoda. Prvo server salje klijentu stanje igre
+// (na pocetku je to string "_" znakova, npr. za ime fiona ce poslat _____ tako
+// da klijent zna koliko ime ima slova). Zatim server prima od klijenta slovo i
+// izvrsava validaciju (je li klijent unio jedno slovo, je li uopce slovo, itd.)
+// Nakon toga se provjerava je li slovo pogodjeno, ako je, potrebno je izmijenit onaj
+// guessing string (ako je klijent pogodio "i", za fionu ce dobit nazad _i___) i konacno
+// se klijentu salje jedna od 4 poruke, ovisno o tome je li pogodio, promasio, pobijedio
+// ili izgubio. Ja kad pokrenem server, uspjesno mi se spoji klijent, posalje mu se inicijalni
+// guessing string i pita me za unos slova na klijentu. Kad unesem slovo, server sve odradi i
+// uspjesno posalje novi guessing string i poruku. Onda bi klijent trebao pitat za novo slovo
+// ali ne pita, nego se klijent zamrzne. Tek kad ubijem servera, onda klijent pita za novo
+// slovo. Pretpostavljam da je u pitanju nacin na koji se cita
+// ili salje slovo (recv), jer se ne radi o zasebnim porukama nego o stream-u podataka, ali
+// ne znam kako to prilagodit za ovaj moj slucaj.
+//
+// Kad ispravim taj problem trebalo bi jos dodat mozda nekakvu identifikaciju
+// (username ili nesto slicno) za klijenta, ako ih se vise spoji
+// da server zna koji mu je sta poslao.
+// ----------------------------------------------------------------
+
 const int PORT = 8000;
 const int MAX_CLIENTS = 8;
 
@@ -53,12 +77,17 @@ void *hangmanGame(void *arg)
     // game loop
     while (lives > 0 && guessing != answer)
     {
-        message = guessing.c_str();
-        send(client_socket, message, strlen(message), 0);
+        bzero(buffer, 1024);
+        int status = send(client_socket, guessing.c_str(), strlen(guessing.c_str()), 0);
+        if (status < 0)
+        {
+            cout << "Error: Failed to send guessing string to client" << endl;
+            close(client_socket);
+            return NULL;
+        }
 
-        int bytes_recieved = recv(client_socket, buffer, sizeof(buffer), 0);
-
-        if (bytes_recieved == -1)
+        status = recv(client_socket, buffer, 1024, 0);
+        if (status == -1)
         {
             cout << "Error: Failed to recieve data from client\n"
                  << endl;
@@ -71,8 +100,8 @@ void *hangmanGame(void *arg)
         if (letter.length() == 0)
         {
             message = "You didn't enter anything. Please enter a letter.\n";
-            cout << "Client entered empty string\n";
             send(client_socket, message, strlen(message), 0);
+            cout << "Client entered empty string\n";
             continue;
         }
 
@@ -80,8 +109,8 @@ void *hangmanGame(void *arg)
         if (letter.length() > 1)
         {
             message = "You entered multiple characters. Please enter only one letter.\n";
-            cout << "Client entered multiple characters\n";
             send(client_socket, message, strlen(message), 0);
+            cout << "Client entered multiple characters\n";
             continue;
         }
 
@@ -89,8 +118,8 @@ void *hangmanGame(void *arg)
         if (!isalpha(letter[0]))
         {
             message = "Please enter a letter.\n";
-            cout << "Client didn't enter a letter\n";
             send(client_socket, message, strlen(message), 0);
+            cout << "Client didn't enter a letter\n";
             continue;
         }
 
@@ -99,8 +128,8 @@ void *hangmanGame(void *arg)
         if (guessing.find(letter) != string::npos)
         {
             message = "You already guessed this letter. Try again.\n";
-            cout << "Client has already guessed this letter\n";
             send(client_socket, message, strlen(message), 0);
+            cout << "Client has already guessed this letter\n";
             continue;
         }
 
@@ -122,16 +151,17 @@ void *hangmanGame(void *arg)
             if (lives == 0)
             {
                 tempMessage = "Game over. You failed to guess the answer - " + answer + "!\n";
-                cout << "Client lost all lives\n";
                 message = tempMessage.c_str();
                 send(client_socket, message, strlen(message), 0);
+                cout << "Client lost all lives\n";
+                close(client_socket);
             }
             else
             {
                 tempMessage = "Incorrect. You have " + to_string(lives) + " lives left.\n";
-                cout << "Client guessed wrong and lost a life\n";
                 message = tempMessage.c_str();
                 send(client_socket, message, strlen(message), 0);
+                cout << "Client guessed wrong and lost a life\n";
             }
         }
         else
@@ -139,19 +169,21 @@ void *hangmanGame(void *arg)
             if (guessing == answer)
             {
                 tempMessage = "You guessed the answer - " + answer + "!\n";
-                cout << "Client won\n";
                 message = tempMessage.c_str();
                 send(client_socket, message, strlen(message), 0);
+                cout << "Client won\n";
+                close(client_socket);
             }
             else
             {
                 tempMessage = "Correct! You have " + to_string(lives) + " lives left.\n";
-                cout << "Client guessed the right letter\n";
                 message = tempMessage.c_str();
                 send(client_socket, message, strlen(message), 0);
+                cout << "Client guessed the right letter\n";
             }
         }
     }
+
     close(client_socket);
     return NULL;
 }
@@ -173,10 +205,10 @@ int main()
 
     // Set the server address and port
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     server_addr.sin_port = htons(PORT);
 
-    // Bind the server socket to the server address
+    // Bind the server socket to the address and port
     if (::bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
     {
         cout << "Error binding server socket" << endl;
@@ -200,7 +232,8 @@ int main()
         if (client_socket == -1)
         {
             cout << "Error accepting client connection" << endl;
-            continue;
+            close(client_socket);
+            exit(1);
         }
         cout << "Accepted client" << endl;
 
@@ -208,11 +241,10 @@ int main()
         if (pthread_create(&thread_id, NULL, hangmanGame, (void *)&client_socket) != 0)
         {
             cout << "Error creating new thread" << endl;
-            continue;
+            close(client_socket);
+            exit(1);
         }
         cout << "Thread for client created" << endl;
-
-        // Detach the thread so it can run independently
         pthread_detach(thread_id);
     }
 
