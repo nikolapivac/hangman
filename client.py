@@ -20,6 +20,12 @@ while True:
 
     # Get the letter from the user and send it to the server
     letter = input("Enter a letter: ")
+    if not letter:
+        print("You didn't enter anything.\n")
+        break
+    elif len(letter) > 1:
+        print("You entered multiple letters.\n")
+        break
     client_socket.send(letter.encode())
 
     # Recieve the message from the server

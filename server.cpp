@@ -65,7 +65,7 @@ void *hangmanGame(void *arg)
         }
 
         status = recv(client_socket, buffer, 1, 0);
-        if (status == -1)
+        if (status < 1)
         {
             cout << "Error: Failed to recieve data from client\n"
                  << endl;
@@ -73,24 +73,6 @@ void *hangmanGame(void *arg)
             pthread_exit(NULL);
         }
         letter = buffer[0];
-
-        // check if the user entered an empty string
-        if (letter.length() == 0)
-        {
-            message = "You didn't enter anything. Please enter a letter.\n";
-            send(client_socket, message, strlen(message), 0);
-            cout << "Client " << client_socket << " entered empty string\n";
-            continue;
-        }
-
-        // check if the user entered multiple characters
-        if (letter.length() > 1)
-        {
-            message = "You entered multiple characters. Please enter only one letter.\n";
-            send(client_socket, message, strlen(message), 0);
-            cout << "Client " << client_socket << " entered multiple characters\n";
-            continue;
-        }
 
         // check if the user entered a letter
         if (!isalpha(letter[0]))
