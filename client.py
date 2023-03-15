@@ -10,21 +10,32 @@ client_socket.connect((HOST, PORT))
 
 while True:
     # Receive the guessing board from the server
-    board = client_socket.recv(1024).decode()
-    print(board)
+    board = b""
+    while b"\n" not in board:
+        data = client_socket.recv(1)
+        if not data:
+            break
+        board += data
+    print(board.decode())
 
     # Get the letter from the user and send it to the server
     letter = input("Enter a letter: ")
-    client_socket.send(letter.encode() + b"\n")
+    client_socket.send(letter.encode())
 
     # Recieve the message from the server
-    status = client_socket.recv(1024).decode()
-    print(status)
+    status = b""
+    while b"\n" not in status:
+        data = client_socket.recv(1)
+        if not data:
+            break
+        status += data
+    print(status.decode())
 
+    check = status.decode()
     # If the message is a final one (win/lose), end the game
-    if(status.startswith("You guessed")): 
+    if(check.startswith("You guessed")): 
         break
-    elif(status.startswith("Game over.")):
+    elif(check.startswith("Game over.")):
         break
     else:
         continue
