@@ -3,67 +3,110 @@
 #include <ctime>
 #include <string>
 #include <cctype>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <thread>
+#include <fstream>
+#include <vector>
 
 using namespace std;
 
-int main()
+constexpr int PORT = 8000;
+constexpr int MAX_CLIENTS = 8;
+
+bool sendMessageToClient(int socket, const char *message, size_t len)
+{
+    int status = send(socket, message, len, 0);
+    if (status < 0)
+    {
+        cout << "Error: Failed to send message to client.\n"
+             << endl;
+        return false;
+    }
+    return true;
+}
+
+string receiveMessageFromClient(int socket, int buffSize)
+{
+    char buffer[buffSize];
+    bzero(buffer, buffSize);
+    int status = recv(socket, buffer, buffSize, 0);
+    if (status < 1)
+    {
+        cout << "Error: Failed to receive message from client\n"
+             << endl;
+        return "";
+    }
+    else
+    {
+        string message;
+        message = buffer;
+        return message;
+    }
+}
+
+void readNamesFromFile(vector<string> &names)
+{
+    ifstream file("names.txt");
+    string name;
+
+    while (file >> name)
+    {
+        names.push_back(name);
+    }
+
+    file.close();
+}
+
+string pickRandomName()
+{
+    vector<string> names;
+    readNamesFromFile(names);
+    srand(time(0));
+
+    int randomNum = rand() % names.size();
+    string answer = names[randomNum];
+
+    return answer;
+}
+
+void hangmanGame(int client_socket)
 {
     int lives = 5;
-    string names[10] = {
-        "anastasia",
-        "andrew",
-        "bradley",
-        "bonnie",
-        "christian",
-        "fiona",
-        "george",
-        "oliver",
-        "gladys",
-        "pamela"};
-
-    // setting the random generator with current time
-    // so its a different random number each time the program runs
-    srand(time(0));
-    int randomNum = rand() % (sizeof(names) / sizeof(names[0]));
-
-    // pick an answer randomly
-    string answer = names[randomNum];
+    string answer = pickRandomName();
     int answerLength = answer.length();
 
-    // initialize the guessing string
-    string guessing;
-    for (int i = 0; i < answerLength; i++)
-    {
-        guessing += "_";
-    }
+    // initialize the guessing string (board)
+    string guessing(answerLength, '_');
+
+    const char *board;
+    string letter;
+    string message;
+
+    // receive username from client
+    string username = receiveMessageFromClient(client_socket, 1024);
 
     // game loop
     while (lives > 0 && guessing != answer)
     {
-        cout << guessing << endl;
+        // send current guessing board
+        board = (guessing + "\n").c_str();
+        if (!sendMessageToClient(client_socket, board, strlen(board)))
+            break;
 
-        string letter;
-        getline(cin, letter);
-
-        // check if the user entered an empty string
-        if (letter.length() == 0)
-        {
-            cout << "You didn't enter anything. Please enter a letter." << endl;
-            continue;
-        }
-
-        // check if the user entered multiple characters
-        if (letter.length() > 1)
-        {
-            cout << "You entered multiple characters. Please enter only one letter." << endl;
-            continue;
-        }
+        // receive letter from client
+        letter = receiveMessageFromClient(client_socket, 1);
+        if (letter == "")
+            break;
 
         // check if the user entered a letter
         if (!isalpha(letter[0]))
         {
-            cout << "Please enter a letter."
-                 << endl;
+            message = "Please enter a letter.\n";
+            if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
+                break;
+            cout << "Player " << username << " didn't enter a letter\n";
             continue;
         }
 
@@ -71,8 +114,10 @@ int main()
         // check if user has already guessed this letter
         if (guessing.find(letter) != string::npos)
         {
-            cout << "You already guessed this letter. Try again."
-                 << endl;
+            message = "You already guessed this letter. Try again.\n";
+            if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
+                break;
+            cout << "Player " << username << " has already guessed this letter\n";
             continue;
         }
 
@@ -93,25 +138,106 @@ int main()
             --lives;
             if (lives == 0)
             {
-                cout << "Game over. You failed to guess the answer - " << answer << "!" << endl;
+                message = "Game over. You failed to guess the answer - " + answer + "!\n";
+                if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
+                    break;
+                cout << "Player " << username << " lost all lives\n";
+                close(client_socket);
             }
             else
             {
-                cout << "Incorrect. You have " << lives << " lives left." << endl;
+                message = "Incorrect. You have " + to_string(lives) + " lives left.\n";
+                if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
+                    break;
+
+                cout << "Player " << username << " guessed wrong and lost a life\n";
             }
         }
         else
         {
             if (guessing == answer)
             {
-                cout << "You guessed the answer - " << answer << "!" << endl;
+                message = "You guessed the answer - " + answer + "!\n";
+                if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
+                    break;
+                cout << "Player " << username << " won\n";
+                close(client_socket);
             }
             else
             {
-                cout << "Correct! You have " << lives << " lives left." << endl;
+                message = "Correct! You have " + to_string(lives) + " lives left.\n";
+                if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
+                    break;
+                cout << "Player " << username << " guessed the right letter\n";
             }
         }
     }
 
+    close(client_socket);
+}
+
+int main()
+{
+    int server_socket, client_socket;
+    struct sockaddr_in server_addr, client_addr;
+
+    // Creating the server socket
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket == -1)
+    {
+        cout << "Error creating server socket" << endl;
+        return -1;
+    }
+    cout << "Server socket created" << endl;
+
+    // Set the server address and port
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_port = htons(PORT);
+
+    // Bind the server socket to the address and port
+    if (::bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
+    {
+        cout << "Error binding server socket" << endl;
+        return -1;
+    }
+    cout << "Server socket bind complete" << endl;
+
+    // Listening on the server socket
+    if (listen(server_socket, MAX_CLIENTS) == -1)
+    {
+        cout << "Error listening for clients on server socket" << endl;
+        return -1;
+    }
+    cout << "Listening..." << endl;
+
+    // Accepting client connections as they come in, and creating a new thread for each client
+    while (true)
+    {
+        socklen_t client_len = sizeof(client_addr);
+        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
+        if (client_socket == -1)
+        {
+            cout << "Error accepting client connection" << endl;
+            close(client_socket);
+            return -1;
+        }
+        cout << "Accepted new client" << endl;
+
+        // Creating a new thread and starting the game for each client
+        try
+        {
+            thread(hangmanGame, client_socket).detach();
+        }
+        catch (...)
+        {
+            cout << "Error creating new thread" << endl;
+            close(client_socket);
+            return -1;
+        }
+        cout << "Thread for a new client created" << endl;
+    }
+
+    close(server_socket);
     return 0;
 }
