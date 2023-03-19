@@ -8,14 +8,18 @@ print("Welcome to HANGMAN!")
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((HOST, PORT))
 
-while True:
-    # Receive the guessing board from the server
-    board = b""
-    while b"\n" not in board:
-        data = client_socket.recv(1)
+def receiveMessageFromServer(socket):
+    buffer = b""
+    while b"\n" not in buffer:
+        data = socket.recv(1)
         if not data:
             break
-        board += data
+        buffer += data
+    return buffer
+
+while True:
+    # Receive the guessing board from the server
+    board = receiveMessageFromServer(client_socket)
     print(board.decode())
 
     # Get the letter from the user and send it to the server
@@ -29,12 +33,7 @@ while True:
     client_socket.send(letter.encode())
 
     # Recieve the message from the server
-    status = b""
-    while b"\n" not in status:
-        data = client_socket.recv(1)
-        if not data:
-            break
-        status += data
+    status = receiveMessageFromServer(client_socket)
     print(status.decode())
 
     check = status.decode()
