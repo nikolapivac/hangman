@@ -27,20 +27,22 @@ bool sendMessageToClient(int socket, const char *message, size_t len)
     return true;
 }
 
-string receiveLetterFromClient(int socket)
+string receiveMessageFromClient(int socket, int buffSize)
 {
-    char buffer[1];
-    bzero(buffer, 1);
-    int status = recv(socket, buffer, 1, 0);
+    char buffer[buffSize];
+    bzero(buffer, buffSize);
+    int status = recv(socket, buffer, buffSize, 0);
     if (status < 1)
     {
+        cout << "Error: Failed to receive message from client\n"
+             << endl;
         return "";
     }
     else
     {
-        string letter;
-        letter = buffer[0];
-        return letter;
+        string message;
+        message = buffer;
+        return message;
     }
 }
 
@@ -82,6 +84,9 @@ void hangmanGame(int client_socket)
     string letter;
     string message;
 
+    // receive username from client
+    string username = receiveMessageFromClient(client_socket, 1024);
+
     // game loop
     while (lives > 0 && guessing != answer)
     {
@@ -91,13 +96,9 @@ void hangmanGame(int client_socket)
             break;
 
         // receive letter from client
-        letter = receiveLetterFromClient(client_socket);
+        letter = receiveMessageFromClient(client_socket, 1);
         if (letter == "")
-        {
-            cout << "Error: Failed to receive letter from client\n"
-                 << endl;
             break;
-        }
 
         // check if the user entered a letter
         if (!isalpha(letter[0]))
@@ -105,7 +106,7 @@ void hangmanGame(int client_socket)
             message = "Please enter a letter.\n";
             if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
                 break;
-            cout << "Client " << client_socket << " didn't enter a letter\n";
+            cout << "Player " << username << " didn't enter a letter\n";
             continue;
         }
 
@@ -116,7 +117,7 @@ void hangmanGame(int client_socket)
             message = "You already guessed this letter. Try again.\n";
             if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
                 break;
-            cout << "Client " << client_socket << " has already guessed this letter\n";
+            cout << "Player " << username << " has already guessed this letter\n";
             continue;
         }
 
@@ -140,7 +141,7 @@ void hangmanGame(int client_socket)
                 message = "Game over. You failed to guess the answer - " + answer + "!\n";
                 if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
                     break;
-                cout << "Client " << client_socket << " lost all lives\n";
+                cout << "Player " << username << " lost all lives\n";
                 close(client_socket);
             }
             else
@@ -149,7 +150,7 @@ void hangmanGame(int client_socket)
                 if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
                     break;
 
-                cout << "Client " << client_socket << " guessed wrong and lost a life\n";
+                cout << "Player " << username << " guessed wrong and lost a life\n";
             }
         }
         else
@@ -159,7 +160,7 @@ void hangmanGame(int client_socket)
                 message = "You guessed the answer - " + answer + "!\n";
                 if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
                     break;
-                cout << "Client " << client_socket << " won\n";
+                cout << "Player " << username << " won\n";
                 close(client_socket);
             }
             else
@@ -167,7 +168,7 @@ void hangmanGame(int client_socket)
                 message = "Correct! You have " + to_string(lives) + " lives left.\n";
                 if (!sendMessageToClient(client_socket, message.c_str(), strlen(message.c_str())))
                     break;
-                cout << "Client " << client_socket << " guessed the right letter\n";
+                cout << "Player " << username << " guessed the right letter\n";
             }
         }
     }
@@ -221,7 +222,7 @@ int main()
             close(client_socket);
             return -1;
         }
-        cout << "Accepted client " << client_socket << endl;
+        cout << "Accepted new client" << endl;
 
         // Creating a new thread and starting the game for each client
         try
@@ -234,7 +235,7 @@ int main()
             close(client_socket);
             return -1;
         }
-        cout << "Thread for client " << client_socket << " created" << endl;
+        cout << "Thread for a new client created" << endl;
     }
 
     close(server_socket);

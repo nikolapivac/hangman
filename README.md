@@ -12,7 +12,7 @@ server
 - has a list of names and randomly picks an answer
 - validates user's input (a letter)
 - checks if the letter is guessed (and if the game is over)
-- supports multiple client connections (pthreads)
+- supports multiple client connections (threads)
 
 client
 
@@ -22,5 +22,5 @@ client
 
 ## Instructions
 
-- compile the server (g++ server.cpp -o server -lpthread)
+- compile the server (g++ -std=c++11 server.cpp -o server -pthread)
 - run the client python script (python3 client.py)

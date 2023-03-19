@@ -3,8 +3,6 @@ import socket
 HOST = "localhost"
 PORT = 8000
 
-print("Welcome to HANGMAN!")
-
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((HOST, PORT))
 
@@ -16,6 +14,10 @@ def receiveMessageFromServer(socket):
             break
         buffer += data
     return buffer
+
+print("Welcome to HANGMAN!")
+username = input("Enter your username: ")
+client_socket.send(username.encode())
 
 while True:
     # Receive the guessing board from the server
